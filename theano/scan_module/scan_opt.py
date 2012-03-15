@@ -222,7 +222,7 @@ class PushOutNonSeqScan(gof.Optimizer):
                                  'to move some computation fron scan '
                                  'which is not allowed to move. Report '
                                  'this on theano-users list'), x)
-                    outside_ins = [x.type.filter_vairable(y) for x,y in
+                    outside_ins = [x.type.filter_variable(y) for x,y in
                                    zip(nd.inputs, outside_ins)]
                     nw_outer_node = nd.op.make_node(*outside_ins)
                     # Step 2. Create variables for replacements
