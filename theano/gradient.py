@@ -306,6 +306,7 @@ def Rop(f, wrt, eval_points):
                     _traverse(inp.owner)
                     local_eval_points.append(
                         seen_nodes[inp.owner][inp.owner.outputs.index(inp)])
+            same_type_eval_points = []
             for x, y in zip(inputs, local_eval_points):
                 if y is not None:
                     if not isinstance(x, gof.Variable):
@@ -313,9 +314,13 @@ def Rop(f, wrt, eval_points):
                     if not isinstance(y, gof.Variable):
                         y = as_tensor_variable(y)
 
+                    y = x.type.filter_variable(y)
                     assert x.type == y.type
+                    same_type_eval_points.append(y)
+                else:
+                    same_type_eval_points.append(y)
 
-            seen_nodes[node] = op.R_op(node.inputs, local_eval_points)
+            seen_nodes[node] = op.R_op(node.inputs, same_type_eval_points)
             return None
 
     # Populate the dictionary
