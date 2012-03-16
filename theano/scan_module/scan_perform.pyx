@@ -63,7 +63,7 @@ from theano.sandbox import cuda
 
 
 def get_version():
-    return 0.265
+    return 0.266
 
 @cython.boundscheck(False)
 def perform(
@@ -85,7 +85,7 @@ def perform(
             numpy.ndarray[numpy.int32_t,ndim=1] mit_mot_out_nslices,
             fn,
             fnct,
-            bint inplace,
+            numpy.ndarray[numpy.int32_t,ndim=1] destroy,
             args,
             outs,
             self):
@@ -230,7 +230,7 @@ def perform(
 
     # 2.1 Create storage space for outputs
     for idx in range(n_outs):
-        if inplace:
+        if destroy[<unsigned int>idx] > 0:
             # ^ Case 1. Outputs should be computed inplace of their
             # initial state
             outs[idx][0] = args[ <unsigned int>(1+ n_seqs + idx)]

@@ -526,6 +526,9 @@ class Scan(PureOp):
                                                     dtype='int32')
             cython_vector_outs = numpy.asarray(self.vector_outs,
                                                     dtype='int32')
+            cython_destroy = numpy.zeros((self.n_outs,), dtype='int32')
+            for k in self.destroy_map:
+                cython_destroy[k] = numpy.int32(1)
             import scan_perform_ext
             p = lambda node, args, outs:\
                     scan_perform_ext.perform(
@@ -547,7 +550,7 @@ class Scan(PureOp):
                         cython_mit_mot_out_nslices,
                         self.fn.fn,
                         self.fn,
-                        self.inplace,
+                        cython_destroy,
                         args,
                         outs,
                         self)
