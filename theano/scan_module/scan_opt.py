@@ -863,11 +863,11 @@ class ScanSaveMem(gof.Optimizer):
 # Just before specialize to have the other optimization
 # like constant folding being applied
 # This don't introduce inplace.
-scan_seqopt.register('scanOp_save_mem',
-                     ScanSaveMem(),
-                     4,
-                     'fast_run',
-                     'scan')
+#scan_seqopt.register('scanOp_save_mem',
+#                     ScanSaveMem(),
+#                     4,
+#                     'fast_run',
+#                     'scan')
 
 
 class ScanMerge(gof.Optimizer):
