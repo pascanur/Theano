@@ -1052,6 +1052,16 @@ class ScanMerge(gof.Optimizer):
 # after const merge but before stabilize so that we can have identity
 # for equivalent nodes but we still have the chance to hoist stuff out
 # of the scan later.
+scan_seqopt.register('scan_merge_nodes00',
+                     gof.MergeOptimizer(),
+                     .8,
+                     'fast_run',
+                     'scan')
+scan_seqopt.register('scan_merge_nodes01',
+                     gof.MergeOptimizer(),
+                     1.8,
+                     'fast_run',
+                     'scan')
 scan_seqopt.register('scanOp_merge',
                      ScanMerge(),
                      2,
