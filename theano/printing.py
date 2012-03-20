@@ -103,6 +103,10 @@ def debugprint(obj, depth=-1, print_type=False,
 
 
 def _print_fn(op, xin):
+    try:
+        xin = numpy.asarray(xin)
+    except:
+        pass
     for attr in op.attrs:
         temp = getattr(xin, attr)
         if callable(temp):
