@@ -560,6 +560,8 @@ def scan(fn,
                             not arg.update)]
     givens.update(dict(zip(other_shared_scan_args,
                            other_shared_inner_args)))
+    other_shared_scan_args = [
+            tensor.as_tensor_variable(x) for x in other_shared_scan_args]
 
     ##
     ### Step 6. Re-order the outputs and clone them replacing things
