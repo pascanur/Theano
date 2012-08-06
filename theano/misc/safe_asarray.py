@@ -30,7 +30,7 @@ def _asarray(a, dtype, order=None):
     if str(dtype) == 'floatX':
         dtype = theano.config.floatX
     dtype = numpy.dtype(dtype)  # Convert into dtype object.
-    rval = numpy.asarray(a, dtype=dtype, order=order)
+    rval = numpy.asarray(numpy.asarray(a), dtype=dtype, order=order)
     # Note that dtype comparison must be done by comparing their `num`
     # attribute. One cannot assume that two identical data types are pointers
     # towards the same object (e.g. under Windows this appears not to be the
