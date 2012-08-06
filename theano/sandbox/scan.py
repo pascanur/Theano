@@ -616,6 +616,9 @@ def scan(fn,
     ##
     ### Step 8. Compute the outputs using the scan op
     ##
+    shared_scan_inputs = [tensor.as_tensor_variable(x) for x in shared_scan_inputs]
+    other_shared_scan_args = [
+        tensor.as_tensor_variable(x) for x in other_shared_scan_args]
     _scan_inputs = (scan_seqs +
                     mit_mot_scan_inputs +
                     mit_sot_scan_inputs +
