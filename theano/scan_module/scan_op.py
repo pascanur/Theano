@@ -530,8 +530,18 @@ class Scan(PureOp):
                   self.n_sit_sot +
                   self.n_nit_sot)
         wrapped_inputs = [Param(x, borrow=True) for x in self.inputs]
-        wrapped_outputs = [Out(x, borrow=True) for x in
-                           self.outputs[:slices]]
+        wrapped_outputs = []
+        _tmp_ins, _tmp_outs = scan_utils.reconstruct_graph(self.inputs,
+                                                           self.outputs)
+        _tmp_fn = theano.function(_tmp_ins,
+                                  _tmp_outs,
+                                  on_unused_input='ignore')
+        _tmp_ins = _tmp_fn.maker.fgraph.inputs
+        _tmp_outs = _tmp_fn.maker.fgraph.outputs
+        for i in xrange(slices):
+            borrow = not self.outputs[i] in self.inputs
+            wrapped_outputs.append(
+                Out(self.outputs[i], borrow=borrow))
         wrapped_outputs += self.outputs[slices:]
         profile = None
         if (theano.config.profile or
