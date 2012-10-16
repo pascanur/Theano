@@ -292,8 +292,11 @@ class Scan(PureOp):
                                            str(outer_mitmot),
                                            argoffset + idx,
                                            outer_mitmot.type.dtype,
+                                           outer_mitmot.type.ndim,
                                            str(inner_mitmot[ipos + k]),
-                                           inner_mitmot[ipos + k].type.dtype))
+                                           inner_mitmot[ipos +
+                                                        k].type.dtype,
+                                           inner_mitmot[ipos + k].type.ndim))
             ipos += len(itaps)
             for k in xrange(len(otaps)):
                 if (inner_mitmot_outs[opos + k].type.dtype != \
@@ -331,14 +334,14 @@ class Scan(PureOp):
                                            inner_mitsots[ipos + k].type.ndim))
             ipos += len(itaps)
             if (inner_mitsot_out.type.dtype != outer_mitsot.type.dtype or
-                 inner_mitsot_out.ndim != outer_mitsot.ndim - 1):
-                    raise ValueError(err_msg2 %
-                                      (str(outer_mitsot),
-                                           argoffset + idx,
-                                           outer_mitsot.type.dtype,
-                                           outer_mitsot.type.ndim,
-                                           inner_mitsot_out.type.dtype,
-                                           inner_mitsot_out.type.ndim))
+                inner_mitsot_out.ndim != outer_mitsot.ndim - 1):
+                raise ValueError(err_msg2 %
+                                 (str(outer_mitsot),
+                                 argoffset + idx,
+                                 outer_mitsot.type.dtype,
+                                 outer_mitsot.type.ndim,
+                                 inner_mitsot_out.type.dtype,
+                                 inner_mitsot_out.type.ndim))
 
         argoffset += len(self.outer_mitsot(inputs))
         # Same checks as above but for outputs of type sit_sot
@@ -350,22 +353,22 @@ class Scan(PureOp):
                 inner_sitsot.ndim != outer_sitsot.ndim - 1):
                 raise ValueError(err_msg1 % ('initial state (outputs_info'
                                            ' in scan nomenclature) ',
-                                           str(outer_sitsot),
-                                           argoffset + idx,
-                                           outer_sitsot.type.dtype,
-                                           outer_sitsot.type.ndim,
-                                           str(inner_sitsot),
-                                           inner_sitsot.type.dtype,
-                                           inner_sitsot.type.ndim))
+                                str(outer_sitsot),
+                                argoffset + idx,
+                                outer_sitsot.type.dtype,
+                                outer_sitsot.type.ndim,
+                                str(inner_sitsot),
+                                inner_sitsot.type.dtype,
+                                inner_sitsot.type.ndim))
             if (inner_sitsot_out.type.dtype != outer_sitsot.type.dtype or
                 inner_sitsot_out.ndim != outer_sitsot.ndim - 1):
-                    raise ValueError(err_msg2 %
-                                      (str(outer_sitsot),
-                                           argoffset + idx,
-                                           outer_sitsot.type.dtype,
-                                           outer_sitsot.type.ndim,
-                                           inner_sitsot_out.type.dtype,
-                                           inner_sitsot_out.type.ndim))
+                raise ValueError(err_msg2 %
+                                (str(outer_sitsot),
+                                argoffset + idx,
+                                outer_sitsot.type.dtype,
+                                outer_sitsot.type.ndim,
+                                inner_sitsot_out.type.dtype,
+                                inner_sitsot_out.type.ndim))
 
         argoffset += len(self.outer_sitsot(inputs))
         # Check that the shared variable and their update rule have the same
@@ -1244,7 +1247,6 @@ class Scan(PureOp):
         else:
             return -1
 
-
     def get_output_slice_idx(self, output_index):
         ipos = 0
         opos = output_index
@@ -1294,21 +1296,25 @@ class Scan(PureOp):
         dC_dXts = []
         Xts = []
         for idx, Xt in enumerate(diff_outputs):
+
             # We are looking for x[t-1] for a given x[t]
             if idx >= self.n_mit_mot_outs:
                 Xt_placeholder = Xt.type()
                 Xts.append(Xt_placeholder)
+            if Xt not in self.inner_nitsot_outs(self_outputs):
+                dtypes = []
+                states = (self.inner_mitmot(self_inputs) +
+                          self.inner_mitsot(self_inputs) +
+                          self.inner_sitsot(self_inputs))
 
-            Xtm1_pos = self.get_input_pos(idx)
-            if Xtm1_pos >= 0:
-                Xtm1 = self_inputs[Xtm1_pos]
-                # It is possible that X[t] is not actually a function of
-                # x[t-1], case in which we can not rely on this information
-                try:
-                    tmp = tensor.grad(Xt.sum(), Xtm1)
-                except ValueError:
-                    tmp = Xt
-                dC_dXt = safe_new(tmp)
+                for pos, inp in enumerate(states):
+                    if inp in theano.gof.graph.inputs([Xt]):
+                        oidx = self.get_output_pos(pos)
+                        if not isinstance(dC_douts[oidx].type,
+                                          DisconnectedType):
+                            dtypes.append(dC_douts[oidx].dtype)
+                new_dtype = theano.scalar.upcast(*dtypes)
+                dC_dXt = safe_new(Xt, dtype=new_dtype)
             else:
                 if isinstance(dC_douts[idx].type, DisconnectedType):
                     continue
@@ -1338,9 +1344,19 @@ class Scan(PureOp):
                     dC_dinps_t[dx] = tmp
 
         # construct dX_dtm1
-        dC_dXtm1s = [x.type() for x in dC_dinps_t[self.n_seqs:]]
+        dC_dXtm1s = []
+        for pos, x in enumerate(dC_dinps_t[self.n_seqs:]):
+            opos = self.get_output_pos(pos)
+            if opos >= 0:
+                dC_dXtm1s.append(dC_dXts[opos].type())
+                if x.dtype != dC_dXts[opos].dtype:
+                    dC_dinps_t[pos + self.n_seqs] = \
+                            tensor.cast(x,
+                                        dtype=dC_dXts[opos].dtype)
+            else:
+                dC_dXtm1s.append(x.type())
         for dx, dC_dXtm1 in enumerate(dC_dXtm1s):
-            dC_dinps_t[dx+self.n_seqs] += dC_dXtm1
+            dC_dinps_t[dx + self.n_seqs] += dC_dXtm1
         # Construct scan op
         # Seqs
         outer_inp_seqs = [x[::-1] for x in inputs[1:1 + self.n_seqs]]
@@ -1406,7 +1422,7 @@ class Scan(PureOp):
                 inner_inp_mitmot.append(dC_dXtm1s[ins_pos - self.n_seqs])
                 inner_out_mitmot.append(dC_dinps_t[ins_pos])
                 if not disconnected_dC_dinps_t[ins_pos]:
-                    disconnected=False
+                    disconnected = False
                 for _sh in self.inner_shared(self_inputs):
                     if _sh in gof.graph.inputs([dC_dinps_t[ins_pos]]):
                         undefined = True
@@ -1436,11 +1452,11 @@ class Scan(PureOp):
             mitmot_inp_taps[idx + offset].append(0)
             for jdx in xrange(len(self.tap_array[idx_tap])):
                 inner_inp_mitmot.append(dC_dXtm1s[ins_pos - self.n_seqs])
+                inner_out_mitmot.append(dC_dinps_t[ins_pos])
                 mitmot_inp_taps[idx + offset].append(
                     -self.tap_array[idx_tap][jdx])
                 mitmot_out_taps[idx].append(
                     -self.tap_array[idx_tap][jdx])
-                inner_out_mitmot.append(dC_dinps_t[ins_pos])
                 if not disconnected_dC_dinps_t[ins_pos]:
                     disconnected = False
                 for _sh in self.inner_shared(self_inputs):
@@ -1466,7 +1482,7 @@ class Scan(PureOp):
             else:
                 outer_inp_mitmot.append(
                     tensor.zeros(outs[idx + offset].shape,
-                                 dtype = dC_dinps_t[ins_pos].dtype))
+                                 dtype=dC_dinps_t[ins_pos].dtype))
             inner_out_mitmot.append(dC_dinps_t[ins_pos])
             for _sh in self.inner_shared(self_inputs):
                 if _sh in gof.graph.inputs([dC_dinps_t[ins_pos]]):
@@ -1518,7 +1534,7 @@ class Scan(PureOp):
         outer_inp_sitsot = [
             tensor.zeros([grad_steps + 1] +
                          [x.shape[i] for i in xrange(x.ndim)],
-                         dtype = y.dtype)
+                         dtype=y.dtype)
             for y, x in zip(inner_inp_sitsot,
                             self.outer_non_seqs(inputs))]
 

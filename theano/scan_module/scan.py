@@ -1058,7 +1058,7 @@ def scan(fn,
         if pos >= 0:
             scan_out_list[pos] = _scan_out_list[idx]
         else:
-            update_map[sit_sot_shared[abs(pos)-1]] = _scan_out_list[idx][-1]
+            update_map[sit_sot_shared[abs(pos) - 1]] = _scan_out_list[idx][-1]
     scan_out_list = [x for x in scan_out_list if x is not None]
     if len(scan_out_list) == 1:
         scan_out_list = scan_out_list[0]

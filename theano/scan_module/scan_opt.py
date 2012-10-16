@@ -222,7 +222,7 @@ class PushOutNonSeqScan(gof.Optimizer):
                                  'to move some computation fron scan '
                                  'which is not allowed to move. Report '
                                  'this on theano-users list'), x)
-                    outside_ins = [x.type.filter_variable(y) for x,y in
+                    outside_ins = [x.type.filter_variable(y) for x, y in
                                    zip(nd.inputs, outside_ins)]
                     nw_outer_node = nd.op.make_node(*outside_ins)
                     # Step 2. Create variables for replacements
@@ -682,7 +682,9 @@ class ScanSaveMem(gof.Optimizer):
                         if (nw_inputs[offset + idx].owner and
                             isinstance(nw_inputs[offset + idx].owner.op,
                                        tensor.IncSubtensor) and
-                            isinstance(nw_inputs[offset+idx].owner.op.idx_list[0], slice)):
+                            isinstance(
+                                nw_inputs[offset + idx].owner.op.idx_list[0],
+                                slice)):
 
                             _nw_input = nw_inputs[offset + idx].owner.inputs[1]
                             val = tensor.as_tensor_variable(val)
