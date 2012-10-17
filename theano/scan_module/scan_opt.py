@@ -104,9 +104,9 @@ def remove_constants_and_unused_inputs_scan(node):
                 pass
         elif op_ins[idx] in all_ins:
             # Check for identical other sequence
-            identical_seqs = [x for x in nw_outer
-                              if scan_utils.equal_computations(
-                                  [x], [node.inputs[idx + 1]])]
+            identical_seqs = [x for x in nw_outer[1:]
+                                  if scan_utils.equal_computations(
+                                      [x], [node.inputs[idx + 1]])]
             if identical_seqs:
                 index = node.inputs.index(identical_seqs[0]) - 1
                 givens[op_ins[idx]] = op_ins[index]
@@ -1396,7 +1396,9 @@ def scan_pushout_dot1(node):
     outer_sitsot = op.outer_sitsot_outs(node)
     seqs = op.inner_seqs(op.inputs)
     for inp, out, outer_out in zip(sitsot_ins, sitsot_outs, outer_sitsot):
-        if (isinstance(out.owner.op, theano.tensor.Elemwise) and
+
+        if (out.owner and
+            isinstance(out.owner.op, theano.tensor.Elemwise) and
             isinstance(out.owner.op.scalar_op, theano.scalar.Add) and
             inp in out.owner.inputs and
             len(outer_out.clients) == 1 and

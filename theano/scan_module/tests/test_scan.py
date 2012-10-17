@@ -2342,9 +2342,7 @@ class T_Scan(unittest.TestCase):
         # this new assert is here to test if scan_merging works ..
         nb_scan = len([n for n in topo
             if isinstance(n.op, theano.scan_module.scan_op.Scan)])
-        # For this to work we need an optimization that it will be pushed in
-        # a new pull request
-        self.assertTrue(nb_scan == 2)
+        self.assertTrue(nb_scan == 1)
         nb_shape_i = len([n for n in topo
             if isinstance(n.op, theano.tensor.opt.Shape_i)])
         if theano.config.mode != 'FAST_COMPILE':
