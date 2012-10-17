@@ -1124,6 +1124,29 @@ class T_Scan(unittest.TestCase):
         assert numpy.allclose(W1.get_value(), numpy_W1)
         assert numpy.allclose(W2.get_value(), numpy_W2)
 
+    def test_grad_dtype_change(self):
+        x = tensor.fscalar('x')
+        y = tensor.fscalar('y')
+        c = tensor.iscalar('c')
+
+        def inner_fn(cond, x, y):
+            new_cond = tensor.cast(tensor.switch(cond, x, y), 'int32')
+            new_x = tensor.switch(cond, tensor.nnet.sigmoid(y * x), x)
+            new_y = tensor.switch(cond, y, tensor.nnet.sigmoid(x))
+            return new_cond, new_x, new_y
+
+        values, _ = theano.scan(
+            inner_fn,
+            outputs_info=[c, x, y],
+            n_steps=10,
+            truncate_gradient=-1,
+            go_backwards=False)
+        gX, gY = tensor.grad(values[1].sum(), [x, y])
+        f = theano.function([c, x, y], [gX, gY],
+                           allow_input_downcast=True)
+        # Check for runtime errors
+        f(numpy.int32(0), numpy.float32(1.), numpy.float32(.5))
+
     def test_simple_shared_mrg_random(self):
         theano_rng = theano.sandbox.rng_mrg.MRG_RandomStreams(utt.fetch_seed())
 
@@ -2316,12 +2339,13 @@ class T_Scan(unittest.TestCase):
                             allow_input_downcast=True, mode=mode_with_opt)
         self.assertTrue(numpy.allclose(f([1, 2, 3]), 2. / 3))
 
-        #theano.printing.debugprint(f, print_type=True)
         topo = f.maker.fgraph.toposort()
         # this new assert is here to test if scan_merging works ..
         nb_scan = len([n for n in topo
             if isinstance(n.op, theano.scan_module.scan_op.Scan)])
-        self.assertTrue(nb_scan == 1)
+        # For this to work we need an optimization that it will be pushed in
+        # a new pull request
+        self.assertTrue(nb_scan == 2)
         nb_shape_i = len([n for n in topo
             if isinstance(n.op, theano.tensor.opt.Shape_i)])
         if theano.config.mode != 'FAST_COMPILE':
@@ -2511,10 +2535,10 @@ class T_Scan(unittest.TestCase):
         def rnn_fn(_u, _y, _W):
 
             srng = theano.tensor.shared_randomstreams.RandomStreams(seed)
-            sl_o = theano.tensor.tanh(theano.tensor.dot(_W, (_u + _y + \
-                     srng.uniform(size=v_h0.shape) *
-                                  numpy.asarray(1e-6, dtype=floatX))))
-            return sl_o
+            tmp_val = _u + _y + srng.uniform(size=v_h0.shape) *\
+                        numpy.asarray(1e-6, dtype=floatX)
+            sl_o = theano.tensor.tanh(theano.tensor.dot(_W, tmp_val))
+            return sl_o, tmp_val
 
         u = theano.tensor.matrix('U')
         h0 = theano.tensor.vector('h0')
@@ -2527,9 +2551,9 @@ class T_Scan(unittest.TestCase):
         _W = theano.tensor.specify_shape(W, v_W.shape)
         _W.name = '_W'
 
-        o, _ = theano.scan(rnn_fn,
+        [o,_], _ = theano.scan(rnn_fn,
                            sequences=_u,
-                           outputs_info=_h0,
+                           outputs_info=[_h0, None],
                            non_sequences=_W,
                            name='rnn_fn')
         o = o[-1]
@@ -3134,6 +3158,19 @@ class T_Scan(unittest.TestCase):
         if max_err > 1e-2:
             raise Exception(theano.tensor.verify_grad.E_grad,
                     (max_err, 1e-2, max_err_pos))
+
+    def test_grad_numeric_shared(self):
+        shared_var = theano.shared(numpy.float32(1.))
+        def inner_fn():
+            return [], {shared_var:shared_var + numpy.float32(1.)}
+        _, updates = theano.scan(inner_fn,
+                                 n_steps = 10,
+                                 truncate_gradient=-1,
+                                 go_backwards=False)
+        cost = updates.values()[0]
+        g_sh = tensor.grad(cost, shared_var)
+        fgrad = theano.function([], g_sh)
+        assert fgrad() == 1
 
     def test_rop_mitmot(self):
         # this test is a copy paste from the script given by Justin Bayer to
