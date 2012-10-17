@@ -260,8 +260,6 @@ class Scan(PureOp):
                                     zip(self.inner_seqs(self.inputs),
                                         self.outer_seqs(inputs))):
             if inner_seq.type.dtype != outer_seq[0].type.dtype:
-                assert isinstance(idx, int)
-
                 raise ValueError(err_msg1 % ('sequence',
                                              str(outer_seq),
                                              idx,
@@ -677,7 +675,7 @@ class Scan(PureOp):
 
     def outer_mitmot_outs(self, list_outputs):
         if isinstance(list_outputs, Apply):
-            list_outputs = list_outputs.ouputs
+            list_outputs = list_outputs.outputs
         return list_outputs[:self.n_mit_mot]
 
     def mitmot_taps(self):
@@ -1662,8 +1660,9 @@ class Scan(PureOp):
             rop_self_outputs = self_outputs
         if self.info['n_shared_outs'] > 0:
             rop_self_outputs = rop_self_outputs[:-self.info['n_shared_outs']]
-        rop_outs = tensor.Rop(rop_self_outputs, rop_of_inputs,
-             inner_eval_points)
+        rop_outs = tensor.Rop(rop_self_outputs,
+                              rop_of_inputs,
+                              inner_eval_points)
         if type(rop_outs) not in (list, tuple):
             rop_outs = [rop_outs]
         # Step 2. Figure out what corresponds to what in the scan
@@ -1754,7 +1753,7 @@ class Scan(PureOp):
         scan_mit_sot = inputs[b:e] + eval_points[b:e]
         inner_mit_sot = self_inputs[ib:ie] + inner_eval_points[ib:ie]
 
-        #SIT_SOT sequences ...
+        # SIT_SOT sequences ...
         b = e
         e = e + self.n_sit_sot
         ib = ie
