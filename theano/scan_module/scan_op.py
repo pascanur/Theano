@@ -1740,7 +1740,7 @@ class Scan(PureOp):
         info['as_while'] = False
         info['profile'] = self.profile
         info['destroy_map'] = {}
-        info['nit_sot_buffers'] = False #True
+        info['nit_sot_buffers'] = True
         if self.name:
             info['name'] = 'grad_of_' + self.name
         else:
@@ -1751,9 +1751,9 @@ class Scan(PureOp):
                        outer_inp_seqs +
                        outer_inp_mitmot +
                        outer_inp_sitsot +
-                       #[tensor.zeros_like(x)
-                       # for x in inputs[1:1 + self.n_seqs]]+
-                       [inputs[0] for x in xrange(n_nit_sot)] +
+                       [tensor.zeros_like(x)
+                        for x in inputs[1:1 + self.n_seqs]]+
+                       #[inputs[0] for x in xrange(n_nit_sot)] +
                        self.outer_shared(inputs) +
                        self.outer_non_seqs(inputs))
 
