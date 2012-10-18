@@ -4978,7 +4978,7 @@ class Split(Op):
         return self.make_node(eval_points[0], *inputs[1:]).outputs
 
 
-class Rebroadcast(Op):
+class Rebroadcast(compile.ViewOp):
     """
     Change the input's broadcastable fields in
     some predetermined way.

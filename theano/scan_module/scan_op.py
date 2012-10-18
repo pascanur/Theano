@@ -564,9 +564,16 @@ class Scan(PureOp):
         output_slices += self.outer_shared_outs(variables)
         # replace inputs
         _outs = self.outputs
+        for _dx in xrange(len(self.inputs)):
+            nw_pattern = [x for x in
+                          enumerate(self.inputs[_dx].broadcastable)
+                          if x[1]]
+            if len(nw_pattern) > 0:
+                input_slices[_dx] = tensor.Rebroadcast(*nw_pattern)(
+                    input_slices[_dx])
         outs = scan_utils.clone(_outs,
-                                replace=dict(zip(self.inputs,
-                                            input_slices)))
+                            replace=dict(zip(self.inputs,
+                                        input_slices)))
         final_outs = []
         for expr, subtensor in zip(outs, output_slices):
             final_outs.append(
