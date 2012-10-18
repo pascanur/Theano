@@ -61,6 +61,9 @@ class CudaNdarrayType(Type):
     Create an CudaNdarray full of 0 values
     """
 
+    def _generate_shared_placeholder(self):
+        return theano.shared(self.value_zeros((1,)*self.ndim))
+
     def __init__(self, broadcastable, name=None, dtype=None):
         if dtype is not None and dtype != 'float32':
             raise TypeError('%s only supports dtype float32 for now. Tried '

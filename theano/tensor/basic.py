@@ -1053,6 +1053,9 @@ class TensorType(Type):
         """
         return numpy.zeros(shape, dtype=self.dtype)
 
+    def _generate_shared_placeholder(self):
+        return theano.tensor._shared(self.value_zeros((1,)*self.ndim))
+
 
 # Register CudaNdarrayType to the OutputGuard list of known types
 # to have OutputGuard generate C code for this type.

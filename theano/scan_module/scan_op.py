@@ -74,6 +74,7 @@ class Scan(PureOp):
         # adding properties into self
         self.inputs = inputs
         self.outputs = outputs
+        self.nit_sot_buffers = False
         self.__dict__.update(info)
         # I keep a version of info in self, to use in __eq__ and __hash__,
         # since info contains all tunable parameters of the op, so for two
@@ -404,14 +405,6 @@ class Scan(PureOp):
                 raise ValueError(('Argument %s given to scan node does not'
                                  ' match its correspondance %s') %
                                   (str(outer_nonseq), str(inner_nonseq)))
-        for outer_nitsot in self.outer_nitsot(inputs):
-            # For every nit_sot input we get as input a int/uint that
-            # depicts the size in memory for that sequence. This feature is
-            # used by truncated BPTT and by scan space optimization
-            if (str(outer_nitsot.type.dtype)[:3] not in ('uin', 'int') or
-                outer_nitsot.ndim != 0):
-                raise ValueError('For output %s you need to provide a '
-                                 'scalar int !', str(outer_nitsot))
 
         apply_node = Apply(self,
                            inputs,
@@ -494,6 +487,101 @@ class Scan(PureOp):
                 self._hash_inner_graph ^
                 scan_utils.hash_listsDictsTuples(self.info))
 
+    def generate_input_slices(self, variables, index):
+        input_slices = []
+        # seqs
+        for var in self.outer_seqs(variables):
+            input_slices.append(var[index])
+        # mitmot
+        for var, itaps, otaps in zip(
+            self.outer_mitmot(variables),
+            self.mitmot_taps(),
+            self.mitmot_out_taps()):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            imin_tap = numpy.min(itaps)
+            omin_tap = numpy.min(otaps)
+            min_tap = imin_tap
+            if omin_tap < imin_tap:
+                min_tap = omin_tap
+            for itap in itaps:
+                input_slices.append(var[index - min_tap + itap])
+        # mitsot
+        for var, itaps in zip(
+            self.outer_mitsot(variables),
+            self.mitsot_taps()):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            min_tap = numpy.min(itaps)
+            for itap in itaps:
+                input_slices.append(var[index - min_tap + itap])
+        # sitsot
+        for var in self.outer_sitsot(variables):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            input_slices.append(var[index])
+        # shared
+        input_slices += self.outer_shared(variables)
+        input_slices += self.outer_non_seqs(variables)
+        return input_slices
+
+    def generate_update_rules(self, input_slices, variables, index):
+        output_slices = []
+        # mitmot
+        for var, itaps, otaps in zip(
+            self.outer_mitmot(variables),
+            self.mitmot_taps(),
+            self.mitmot_out_taps()):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            imin_tap = numpy.min(itaps)
+            omin_tap = numpy.min(otaps)
+            min_tap = imin_tap
+            if omin_tap < imin_tap:
+                min_tap = omin_tap
+            for otap in otaps:
+                output_slices.append(var[index - min_tap + otap])
+        # mitsot
+        for var, itaps in zip(
+            self.outer_mitsot(variables),
+            self.mitsot_taps()):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            min_tap = numpy.min(itaps)
+            for itap in itaps:
+                output_slices.append(var[index - min_tap + itap])
+        # sitsot
+        for var in self.outer_sitsot(variables):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            output_slices.append(var[index + 1])
+        # nitsot
+        for var in self.outer_nitsot(variables):
+
+            length = tensor.scalar_from_tensor(var.shape[0])
+            output_slices.append(var[index])
+        # shared
+        output_slices += self.outer_shared_outs(variables)
+        # replace inputs
+        _outs = self.outputs
+        outs = scan_utils.clone(_outs,
+                                replace=dict(zip(self.inputs,
+                                            input_slices)))
+        final_outs = []
+        for expr, subtensor in zip(outs, output_slices):
+            final_outs.append(
+                tensor.set_subtensor(subtensor, expr))
+
+        update_rules = {}
+        begin = self.n_seqs + 1
+        end = len(self.outer_non_seqs(variables))
+        for expr, val in zip(final_outs, variables[begin:-end]):
+            update_rules[val] = expr
+        if self.as_while:
+            return update_rules, outs[-1]
+        else:
+            return update_rules, []
+
     def make_thunk(self, node, storage_map, compute_map, no_recycling):
         """
         :param node: something previously returned by self.make_node
@@ -526,6 +614,51 @@ class Scan(PureOp):
         # If a shared variable is the result of a ViewOp it is a clear
         # indication that we need to copy that value after the perform of
         # scan is done
+        if self.nit_sot_buffers or self.n_nit_sot == 0:
+            # Construct dummy variables
+            # add dummy starting variable for indices to work
+            self._shared_vars = [
+                inp.type._generate_shared_placeholder()
+                for inp in node.inputs[1:]]
+
+            self.n_params = len(self.outer_non_seqs(node.inputs))
+            end = self.n_params + self. n_shared_outs
+            self.begin_outs = 1 + self.n_seqs
+            self._index = theano.scalar.sharedvar.shared(numpy.int64(0))
+            # Construct computational graph
+            input_slices = self.generate_input_slices(
+                [[]] + self._shared_vars, self._index)
+            update_rules, output = self.generate_update_rules(
+                input_slices, [[]] + self._shared_vars, self._index)
+            update_rules[self._index] = self._index + numpy.int64(1)
+            # Compile function
+            profile = None
+            if (theano.config.profile or
+                (isinstance(self.profile, (basestring, bool, int))
+                                          and self.profile)):
+                if isinstance(self.profile, basestring):
+                    profile = ScanProfileStats(name=self.profile)
+                else:
+                    profile = ScanProfileStats(name=self.name)
+            self.fn = theano.function([], output,
+                                      updates = update_rules,
+                                      mode=theano.Mode(linker='cvm'),
+                                      name=self.name,
+                                      profile = profile)
+            if self.as_while:
+                p = self.as_while
+            else:
+                p = self.loop
+            def rval(p=p, i=node_input_storage, o=node_output_storage, n=node):
+                r = p(n, [x[0] for x in i], o)
+                for o in node.outputs:
+                    compute_map[o][0] = True
+                return r
+            rval.inputs = node_input_storage
+            rval.outputs = node_output_storage
+            rval.perform = p
+            rval.lazy = False
+            return rval
         slices = (self.n_mit_mot_outs +
                   self.n_mit_sot +
                   self.n_sit_sot +
@@ -647,6 +780,48 @@ class Scan(PureOp):
         rval.perform = p
         rval.lazy = False
         return rval
+
+    def loop(self, node, args, outs):
+        # set values into shared variables
+        t0_call = time.time()
+        t_fn = 0
+        for arg, shvar in zip(args[1:], self._shared_vars):
+            shvar.set_value(arg, borrow=True)
+        t0_fn = time.time()
+        self.fn.fn(n_calls=args[0])
+        dt_fn = time.time() - t0_fn
+        t_fn += dt_fn
+        # call linker n times
+        dx = 0
+
+        for out, var in zip(outs,
+                            self._shared_vars[self.n_seqs: -self.n_params]):
+            out[0] = var.get_value(borrow=True, return_internal_type=True)
+        t_call = time.time() - t0_call
+        if hasattr(self.fn.maker, 'profile') and self.fn.maker.profile:
+            profile = self.fn.maker.profile
+            profile.callcount += 1
+            profile.nbsteps += args[0]
+            profile.call_time += t_call
+            profile.vm_call_time += t_fn
+            if hasattr(self.fn.fn, 'update_profile'):
+                self.fn.fn.update_profile(profile)
+
+        self.t_call = t_call
+        self.t_fn = t_fn
+
+
+    def do_while(self, node, args, outs):
+        # set values into shared variables
+        for arg, shvar in zip(args[1:], self._shared_vars):
+            shvar.set_value(arg, borrow=True)
+        cond = self.fn.fn()
+        while cond:
+            cond = self.fn.fn()
+        # call linker n times
+        for out, var in zip(outs,
+                            self._shared_vars[1 + self.n_seqs: self.n_params]):
+            out[0] = var.get_value(borrow=True, return_internal_type=True)
 
     def inner_seqs(self, list_inputs):
         # Given the list of inner inputs this function grabs those
@@ -1120,6 +1295,16 @@ class Scan(PureOp):
         for inp, inp_shp in izip(node.inputs, input_shapes):
             assert inp_shp is None or len(inp_shp) == inp.type.ndim
 
+        if self.nit_sot_buffers:
+            offset = 1 + self.n_seqs
+            n_outs = self.n_mit_mot + self.n_mit_sot + self.n_sit_sot
+            scan_outs = [x for x in input_shapes[offset:offset + n_outs]]
+            offset += n_outs + self.n_shared_outs
+            scan_outs += input_shapes[offset: offset + self.n_nit_sot]
+            scan_outs += input_shapes[offset - self.n_shared_outs: offset]
+            return scan_outs
+
+
         # sequences
         # We skip iputs_shapes[0] as it is the total or current number
         # of iterations.
@@ -1555,6 +1740,7 @@ class Scan(PureOp):
         info['as_while'] = False
         info['profile'] = self.profile
         info['destroy_map'] = {}
+        info['nit_sot_buffers'] = False #True
         if self.name:
             info['name'] = 'grad_of_' + self.name
         else:
@@ -1565,6 +1751,8 @@ class Scan(PureOp):
                        outer_inp_seqs +
                        outer_inp_mitmot +
                        outer_inp_sitsot +
+                       #[tensor.zeros_like(x)
+                       # for x in inputs[1:1 + self.n_seqs]]+
                        [inputs[0] for x in xrange(n_nit_sot)] +
                        self.outer_shared(inputs) +
                        self.outer_non_seqs(inputs))

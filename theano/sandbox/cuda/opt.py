@@ -1454,10 +1454,14 @@ def gpuScanOptimization(node):
                  thescan.n_mit_sot +
                  thescan.n_sit_sot +
                  thescan.n_shared_outs)
-            nw_ins += [safe_to_gpu(x) for x in inputs[1:e]]
-            b = e
-            e = e + thescan.n_nit_sot
-            nw_ins += inputs[b:e]
+            if thescan.nit_sot_buffers:
+                e += thescan.n_nit_sot
+                nw_ins += [safe_to_gpu(x) for x in inputs[1:e]]
+            else:
+                nw_ins += [safe_to_gpu(x) for x in inputs[1:e]]
+                b = e
+                e = e + thescan.n_nit_sot
+                nw_ins += inputs[b:e]
             nw_ins += [safe_to_gpu(x) for x in inputs[e:]]
             scan_ins = [tensor_to_cuda(x) for x in thescan.inputs]
             scan_outs = [safe_to_gpu(x) for x in thescan.outputs]
@@ -1501,10 +1505,14 @@ def gpuScanOptimization(node):
                  thescan.n_mit_sot +
                  thescan.n_sit_sot +
                  thescan.n_shared_outs)
-            nw_ins += [safe_to_gpu(x) for x in inputs[1:e]]
-            b = e
-            e = e + thescan.n_nit_sot
-            nw_ins += inputs[b:e]
+            if thescan.nit_sot_buffers:
+                e += thescan.n_nit_sot
+                nw_ins += [safe_to_gpu(x) for x in inputs[1:e]]
+            else:
+                nw_ins += [safe_to_gpu(x) for x in inputs[1:e]]
+                b = e
+                e = e + thescan.n_nit_sot
+                nw_ins += inputs[b:e]
             nw_ins += [safe_to_gpu(x) for x in inputs[e:]]
 
             scan_ins = [tensor_to_cuda(x) for x in thescan.inputs]

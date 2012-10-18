@@ -873,8 +873,11 @@ def scan(fn,
     nit_sot_inner_outputs = []
     nit_sot_return_steps = {}
     nit_sot_rightOrder = []
+    nit_sot_buffers = []
     for i, out in enumerate(outs_info):
         if not 'taps' in out:
+            if 'ndim' in out:
+                nit_sot_buffers.append(out['buffer'])
             nit_sot_inner_outputs.append(outputs[i])
             if i in return_steps:
                 nit_sot_return_steps[n_nit_sot] = return_steps[i]
@@ -955,7 +958,9 @@ def scan(fn,
 
     tap_array = mit_sot_tap_array + [[-1] for x in xrange(n_sit_sot)]
     info = {}
-
+    use_nit_sot_buffers = False
+    if len(nit_sot_buffers) == n_nit_sot:
+        use_nit_sot_buffers = True
     info['tap_array'] = tap_array
     info['n_seqs'] = n_seqs
     info['n_mit_mot'] = n_mit_mot
@@ -972,20 +977,31 @@ def scan(fn,
     info['gpu'] = False
     info['as_while'] = as_while
     info['profile'] = profile
+    info['nit_sot_buffers'] = use_nit_sot_buffers
 
     local_op = scan_op.Scan(inner_inputs, new_outs, info)
 
     ##
     ### Step 8. Compute the outputs using the scan op
     ##
-    _scan_inputs = (scan_seqs +
-                    mit_mot_scan_inputs +
-                    mit_sot_scan_inputs +
-                    sit_sot_scan_inputs +
-                    shared_scan_inputs +
-                    [actual_n_steps for x in xrange(n_nit_sot)] +
-                    other_shared_scan_args +
-                    other_scan_args)
+    if use_nit_sot_buffers:
+        _scan_inputs = (scan_seqs +
+                        mit_mot_scan_inputs +
+                        mit_sot_scan_inputs +
+                        sit_sot_scan_inputs +
+                        shared_scan_inputs +
+                        nit_sot_buffers +
+                        other_shared_scan_args +
+                        other_scan_args)
+    else:
+        _scan_inputs = (scan_seqs +
+                        mit_mot_scan_inputs +
+                        mit_sot_scan_inputs +
+                        sit_sot_scan_inputs +
+                        shared_scan_inputs +
+                        [actual_n_steps for x in xrange(n_nit_sot)] +
+                        other_shared_scan_args +
+                        other_scan_args)
 
     scan_inputs = []
     for arg in [actual_n_steps] + _scan_inputs:

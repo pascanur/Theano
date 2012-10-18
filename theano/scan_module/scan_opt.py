@@ -954,6 +954,7 @@ class ScanSaveMem(gof.Optimizer):
             # I need to make sure I'm not reapplying the same optimization
             # twice since bad things usually happen if I do that
             info['_scan_savemem_visited'] = True
+            info['nit_sot_buffers'] = op.nit_sot_buffers
             new_outs = scan_op.Scan(inps,
                                     outs,
                                     info).make_node(*node_ins).outputs
@@ -1081,6 +1082,8 @@ class ScanMerge(gof.Optimizer):
         info['gpu'] = False
         info['as_while'] = as_while
         info['profile'] = nodes[0].op.profile
+        info['nit_sot_buffers'] = numpy.all([x.op.nit_sot_buffers for x in
+                                           nodes])
 
         inner_ins = []
         outer_ins = []
@@ -1132,7 +1135,11 @@ class ScanMerge(gof.Optimizer):
             # NitSot
             inner_outs += nd.op.inner_nitsot_outs(nd.op.outputs)
             outer_ins += rename(nd.op.outer_nitsot(nd.inputs), idx)
-            outer_outs += nd.op.outer_nitsot_outs(nd.outputs)
+            if info['nit_sot_buffers']:
+                outer_outs += nd.op.outer_nitsot_outs(nd.outputs)
+            else:
+                outer_outs += [nodes[0].inputs[0] for x in
+                               nd.op.outer_nitsot_outs(nd.outputs)]
 
         for idx, nd in enumerate(nodes):
             # Shared
@@ -1463,8 +1470,49 @@ def scan_pushout_dot1(node):
                     inner_sitsot_outs = inner_sitsot_outs[:idx] +\
                             inner_sitsot_outs[idx + 1:]
                     # add n_steps as the length
-                    outer_nitsot.append(node.inputs[0])
+                    #outer_nitsot.append(node.inputs[0])
                     inner_nitsot_outs.append(new_scan_out)
+                    shape_of = node.fgraph.shape_feature.shape_of
+                    input_shapes = [shape_of[x] for x in node.inputs]
+                    seqs_shape = [x[1:] for x in input_shapes[1:1 + op.n_seqs]]
+
+                    # mit_mot, mit_sot, sit_sot
+                    n_outs = op.n_mit_mot + op.n_mit_sot + op.n_sit_sot
+                    outs_shape = []
+                    for idx in xrange(n_outs):
+                        for k in op.tap_array[idx]:
+                            outs_shape += [input_shapes[idx + op.n_seqs + 1][1:]]
+
+                    # shared_outs
+                    offset = 1 + op.n_seqs + n_outs
+                    for idx in xrange(op.n_shared_outs):
+                        outs_shape += [input_shapes[idx + offset]]
+
+                    # non_sequences
+                    offset += op.n_nit_sot + op.n_shared_outs
+                    inner_ins_shapes = seqs_shape + outs_shape + input_shapes[offset:]
+                    assert len(inner_ins_shapes) == len(op.inputs)
+
+                    grab_shape = scan_utils.infer_shape(
+                        [new_scan_out], op.inputs, inner_ins_shapes)[0]
+
+                    out_equivalent = {}
+                    for in_ns, out_ns in zip(op.inner_non_seqs(op.inputs),
+                                              op.outer_non_seqs(node.inputs)):
+                        out_equivalent[in_ns] = out_ns
+                    validator = scan_utils.Validator(
+                            valid=input_shapes,
+                            invalid=op.inputs,
+                            valid_equivalent=out_equivalent)
+                    grab_shape = [validator.check(x) for x in grab_shape]
+                    if numpy.all([x is not None for x in grab_shape]) and \
+                       op.nit_sot_buffers:
+                        new_mem_buffer = tensor.zeros(
+                            [node.inputs[0]] +
+                            [x[0] for x in grab_shape])
+                        new_info['nit_sot_buffers'] = True
+                    else:
+                        new_info['nit_sot_buffers'] = False
                     _new_inner_inps = (inner_seqs +
                                        inner_mitmot +
                                        inner_mitsot +
@@ -1479,18 +1527,29 @@ def scan_pushout_dot1(node):
                     new_inner_inps, new_inner_outs =\
                             scan_utils.reconstruct_graph(
                                 _new_inner_inps, _new_inner_outs)
-
                     new_op = scan_op.Scan(new_inner_inps, new_inner_outs,
                                           new_info)
-
-                    _scan_inputs = ([node.inputs[0]] +
-                                    outer_seqs +
-                                    outer_mitmot +
-                                    outer_mitsot +
-                                    outer_sitsot +
-                                    outer_shared +
-                                    outer_nitsot +
-                                    outer_non_seqs)
+                    if new_info['nit_sot_buffers']:
+                        _scan_inputs = ([node.inputs[0]] +
+                                        outer_seqs +
+                                        outer_mitmot +
+                                        outer_mitsot +
+                                        outer_sitsot +
+                                        outer_shared +
+                                        outer_nitsot +
+                                        [new_mem_buffer] +
+                                        outer_non_seqs)
+                    else:
+                        _scan_inputs = ([node.inputs[0]] +
+                                        outer_seqs +
+                                        outer_mitmot +
+                                        outer_mitsot +
+                                        outer_sitsot +
+                                        outer_shared +
+                                        [node.inputs[0] for x in
+                                         outer_nitsot] +
+                                        [node.inputs[0]] +
+                                        outer_non_seqs)
                     new_outs = new_op(*_scan_inputs)
 
                     # We need now to pair correctly the new outputs with the
