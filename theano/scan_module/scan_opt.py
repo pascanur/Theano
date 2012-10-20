@@ -1358,10 +1358,45 @@ def scan_merge_inouts(node):
         seen.append((i, o))
         return o
 
+    def map_nitsot_out(i, o, sh, seen):
+        for p,(si, so, ssh) in enumerate(seen):
+            if equal_computations([i], [si], left, right):
+                if equal_computations([sh], [ssh]):
+                    return so
+                try:
+                    vsh = int(opt.get_constant_value(sh))
+                    vssh = int(opt.get_constant_value(ssh))
+                except:
+                    return o
+                if vsh == vssh:
+                    return so
+                elif vsh > vssh:
+                    seen[p] = (i,o,sh)
+                    return o
+                else:
+                    return so[:vsh]
+        seen.append((i, o, sh))
+        return o
+
     seen = []
-    na.outer_out_nit_sot = [map_out(i, o, seen)
-                            for i, o in zip(na.inner_out_nit_sot,
-                                            na.outer_out_nit_sot)]
+
+    shapes = []
+    for x in na.outer_in_nit_sot:
+        if x.ndim > 0:
+            shapes.append(
+                node.fgraph.shape_feature.shape_of[x][0])
+        else:
+            shapes.append(x)
+    na.outer_out_nit_sot = [map_nitsot_out(i, o, sh, seen)
+                            for i, o, sh in zip(na.inner_out_nit_sot,
+                                            na.outer_out_nit_sot,
+                                            shapes)]
+    na.outer_out_nit_sot = [map_nitsot_out(i, o, sh, seen)
+                            for i, o, sh in zip(na.inner_out_nit_sot,
+                                            na.outer_out_nit_sot,
+                                            shapes)]
+
+
 
     seen = []
     na.outer_out_sit_sot = [map_out(i, o, seen)
@@ -1478,14 +1513,14 @@ def scan_pushout_dot1(node):
                     # mit_mot, mit_sot, sit_sot
                     n_outs = op.n_mit_mot + op.n_mit_sot + op.n_sit_sot
                     outs_shape = []
-                    for idx in xrange(n_outs):
-                        for k in op.tap_array[idx]:
-                            outs_shape += [input_shapes[idx + op.n_seqs + 1][1:]]
+                    for _idx in xrange(n_outs):
+                        for k in op.tap_array[_idx]:
+                            outs_shape += [input_shapes[_idx + op.n_seqs + 1][1:]]
 
                     # shared_outs
                     offset = 1 + op.n_seqs + n_outs
-                    for idx in xrange(op.n_shared_outs):
-                        outs_shape += [input_shapes[idx + offset]]
+                    for _idx in xrange(op.n_shared_outs):
+                        outs_shape += [input_shapes[_idx + offset]]
 
                     # non_sequences
                     offset += op.n_nit_sot + op.n_shared_outs
@@ -1573,6 +1608,7 @@ def scan_pushout_dot1(node):
                         sh0 = _val.shape[0]
                         sh1 = _val.shape[1]
                         sh2 = _val.shape[2]
+
                         val = _val.reshape((sh0 * sh1, sh2))
                         new_out = tensor.dot(out_seq, val)
                         new_out = tensor.unbroadcast(
@@ -1589,6 +1625,7 @@ def scan_pushout_dot1(node):
                         new_out = tensor.dot(val, out_seq)
                         new_out = tensor.unbroadcast(
                             new_out.dimshuffle('x', 0, 1), 0)
+
                     outer_sitsot_outs = (outer_sitsot_outs[:idx] +
                                          [new_out] +
                                          outer_sitsot_outs[idx:])

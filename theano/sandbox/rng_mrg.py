@@ -7,6 +7,7 @@ http://www.iro.umontreal.ca/~simardr/ssj/indexe.html
 """
 import sys, warnings
 import numpy
+import theano
 
 from theano import Op, Apply, shared, config, Variable
 from theano.tensor import (raw_random, TensorType, as_tensor_variable,
@@ -167,7 +168,7 @@ class mrg_uniform_base(Op):
                 [rstate.type(), self.output_type()])
 
     def grad(self,inputs,ograd):
-        return [None for i in inputs]
+        return [theano.gradient.DisconnectedType()() for i in inputs]
 
     def R_op(self, inputs, eval_points):
         return [None for i in eval_points]

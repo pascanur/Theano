@@ -876,7 +876,7 @@ def scan(fn,
     nit_sot_buffers = []
     for i, out in enumerate(outs_info):
         if not 'taps' in out:
-            if 'ndim' in out:
+            if 'buffer' in out:
                 nit_sot_buffers.append(out['buffer'])
             nit_sot_inner_outputs.append(outputs[i])
             if i in return_steps:

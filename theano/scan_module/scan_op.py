@@ -654,6 +654,8 @@ class Scan(PureOp):
                                       profile = profile)
             if self.as_while:
                 p = self.as_while
+            elif self.profile:
+                p = self.profiled_loop
             else:
                 p = self.loop
             def rval(p=p, i=node_input_storage, o=node_output_storage, n=node):
@@ -789,18 +791,27 @@ class Scan(PureOp):
         return rval
 
     def loop(self, node, args, outs):
+        self._index.set_value(0)
+        for arg, shvar in zip(args[1:], self._shared_vars):
+            shvar.set_value(arg, borrow=True)
+        self.fn.fn(n_calls=args[0])
+        dx = 0
+
+        for out, var in zip(outs,
+                            self._shared_vars[self.n_seqs: -self.n_params]):
+            out[0] = var.get_value(borrow=True, return_internal_type=True)
+
+    def profiled_loop(self, node, args, outs):
         # set values into shared variables
         t0_call = time.time()
         t_fn = 0
+        self._index.set_value(0)
         for arg, shvar in zip(args[1:], self._shared_vars):
             shvar.set_value(arg, borrow=True)
         t0_fn = time.time()
         self.fn.fn(n_calls=args[0])
         dt_fn = time.time() - t0_fn
         t_fn += dt_fn
-        # call linker n times
-        dx = 0
-
         for out, var in zip(outs,
                             self._shared_vars[self.n_seqs: -self.n_params]):
             out[0] = var.get_value(borrow=True, return_internal_type=True)
@@ -813,10 +824,8 @@ class Scan(PureOp):
             profile.vm_call_time += t_fn
             if hasattr(self.fn.fn, 'update_profile'):
                 self.fn.fn.update_profile(profile)
-
         self.t_call = t_call
         self.t_fn = t_fn
-
 
     def do_while(self, node, args, outs):
         # set values into shared variables
@@ -1454,14 +1463,14 @@ class Scan(PureOp):
         if not isinstance(outs, (list, tuple)):
             outs = [outs]
         if self.n_nit_sot > 0:
-            grad_steps = self.outer_nitsot_outs(outs)[0].shape[0]
+            n_steps = self.outer_nitsot_outs(outs)[0].shape[0]
         elif self.n_sit_sot > 0:
-            grad_steps = self.outer_sitsot_outs(outs)[0].shape[0] - 1
+            n_steps = self.outer_sitsot_outs(outs)[0].shape[0] - 1
         elif self.n_mit_sot > 0:
-            grad_steps = self.outer_mitsot_outs(outs)[0].shape[0] +\
+            n_steps = self.outer_mitsot_outs(outs)[0].shape[0] +\
                     self.mintaps[self.n_mit_mot]
         else:
-            grad_steps = inputs[0]
+            n_steps = inputs[0]
 
         rval = scan_utils.reconstruct_graph(self.inputs,
                                             self.outputs)
@@ -1503,7 +1512,10 @@ class Scan(PureOp):
                         if not isinstance(dC_douts[oidx].type,
                                           DisconnectedType):
                             dtypes.append(dC_douts[oidx].dtype)
-                new_dtype = theano.scalar.upcast(*dtypes)
+                if dtypes:
+                    new_dtype = theano.scalar.upcast(*dtypes)
+                else:
+                    new_dtype = 'float32'
                 dC_dXt = safe_new(Xt, dtype=new_dtype)
             else:
                 if isinstance(dC_douts[idx].type, DisconnectedType):
@@ -1692,7 +1704,9 @@ class Scan(PureOp):
             n_mitmot_inps += 2
 
         if self.truncate_gradient != -1:
-            grad_steps = tensor.minimum(grad_steps, self.truncate_gradient)
+            grad_steps = tensor.constant(self.truncate_gradient)
+        else:
+            grad_steps = n_steps
 
         n_nit_sot = self.n_seqs
         inner_out_nitsot = dC_dinps_t[:self.n_seqs]
@@ -1758,9 +1772,9 @@ class Scan(PureOp):
                        outer_inp_seqs +
                        outer_inp_mitmot +
                        outer_inp_sitsot +
-                       [tensor.zeros_like(x)
+                        [tensor.zeros_like(x)
                         for x in inputs[1:1 + self.n_seqs]]+
-                       #[inputs[0] for x in xrange(n_nit_sot)] +
+                       #[n_steps for x in xrange(n_nit_sot)] +
                        self.outer_shared(inputs) +
                        self.outer_non_seqs(inputs))
 
