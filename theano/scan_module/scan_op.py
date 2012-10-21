@@ -581,8 +581,9 @@ class Scan(PureOp):
 
         update_rules = {}
         begin = self.n_seqs + 1
-        end = len(self.outer_non_seqs(variables))
-        for expr, val in zip(final_outs, variables[begin:-end]):
+        end = len(variables) - len(self.outer_non_seqs(variables))
+
+        for expr, val in zip(final_outs, variables[begin:end]):
             update_rules[val] = expr
         if self.as_while:
             return update_rules, outs[-1]
@@ -627,10 +628,10 @@ class Scan(PureOp):
             self._shared_vars = [
                 inp.type._generate_shared_placeholder()
                 for inp in node.inputs[1:]]
-
             self.n_params = len(self.outer_non_seqs(node.inputs))
             end = self.n_params + self. n_shared_outs
             self.begin_outs = 1 + self.n_seqs
+            self.nstop = len(self._shared_vars) - self.n_params
             self._index = theano.scalar.sharedvar.shared(numpy.int64(0))
             # Construct computational graph
             input_slices = self.generate_input_slices(
@@ -798,7 +799,7 @@ class Scan(PureOp):
         dx = 0
 
         for out, var in zip(outs,
-                            self._shared_vars[self.n_seqs: -self.n_params]):
+                            self._shared_vars[self.n_seqs: self.nstop]):
             out[0] = var.get_value(borrow=True, return_internal_type=True)
 
     def profiled_loop(self, node, args, outs):
@@ -813,7 +814,7 @@ class Scan(PureOp):
         dt_fn = time.time() - t0_fn
         t_fn += dt_fn
         for out, var in zip(outs,
-                            self._shared_vars[self.n_seqs: -self.n_params]):
+                            self._shared_vars[self.n_seqs: self.nstop]):
             out[0] = var.get_value(borrow=True, return_internal_type=True)
         t_call = time.time() - t0_call
         if hasattr(self.fn.maker, 'profile') and self.fn.maker.profile:
