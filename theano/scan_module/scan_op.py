@@ -794,13 +794,13 @@ class Scan(PureOp):
     def loop(self, node, args, outs):
         self._index.set_value(0)
         for arg, shvar in zip(args[1:], self._shared_vars):
-            shvar.set_value(arg, borrow=True)
+            shvar.set_value(arg, borrow=False)
         self.fn.fn(n_calls=args[0])
         dx = 0
 
         for out, var in zip(outs,
                             self._shared_vars[self.n_seqs: self.nstop]):
-            out[0] = var.get_value(borrow=True, return_internal_type=True)
+            out[0] = var.get_value(borrow=False, return_internal_type=True)
 
     def profiled_loop(self, node, args, outs):
         # set values into shared variables
@@ -808,14 +808,14 @@ class Scan(PureOp):
         t_fn = 0
         self._index.set_value(0)
         for arg, shvar in zip(args[1:], self._shared_vars):
-            shvar.set_value(arg, borrow=True)
+            shvar.set_value(arg, borrow=False)
         t0_fn = time.time()
         self.fn.fn(n_calls=args[0])
         dt_fn = time.time() - t0_fn
         t_fn += dt_fn
         for out, var in zip(outs,
                             self._shared_vars[self.n_seqs: self.nstop]):
-            out[0] = var.get_value(borrow=True, return_internal_type=True)
+            out[0] = var.get_value(borrow=False, return_internal_type=True)
         t_call = time.time() - t0_call
         if hasattr(self.fn.maker, 'profile') and self.fn.maker.profile:
             profile = self.fn.maker.profile
@@ -1762,7 +1762,7 @@ class Scan(PureOp):
         info['as_while'] = False
         info['profile'] = self.profile
         info['destroy_map'] = {}
-        info['nit_sot_buffers'] = True
+        info['nit_sot_buffers'] = False
         if self.name:
             info['name'] = 'grad_of_' + self.name
         else:
@@ -1773,9 +1773,9 @@ class Scan(PureOp):
                        outer_inp_seqs +
                        outer_inp_mitmot +
                        outer_inp_sitsot +
-                        [tensor.zeros_like(x)
-                        for x in inputs[1:1 + self.n_seqs]]+
-                       #[n_steps for x in xrange(n_nit_sot)] +
+                       # [tensor.zeros_like(x)
+                       # for x in inputs[1:1 + self.n_seqs]]+
+                       [n_steps for x in xrange(n_nit_sot)] +
                        self.outer_shared(inputs) +
                        self.outer_non_seqs(inputs))
 
