@@ -1137,8 +1137,9 @@ class ScanMerge(gof.Optimizer):
             if info['nit_sot_buffers']:
                 outer_outs += nd.op.outer_nitsot_outs(nd.outputs)
             else:
-                outer_outs += [nodes[0].inputs[0] for x in
-                               nd.op.outer_nitsot_outs(nd.outputs)]
+                outer_outs += nd.op.outer_nitsot_outs(nd.outputs)
+                #outer_outs += [nodes[0].inputs[0] for x in
+                #               nd.op.outer_nitsot_outs(nd.outputs)]
 
         for idx, nd in enumerate(nodes):
             # Shared
@@ -1387,7 +1388,7 @@ def scan_merge_inouts(node):
                 node.fgraph.shape_feature.shape_of[x][0])
         else:
             shapes.append(x)
-    na.outer_out_nit_sot = [map_nitsot_out(i, o, sh, seen)
+    tmp = [map_nitsot_out(i, o, sh, seen)
                             for i, o, sh in zip(na.inner_out_nit_sot,
                                             na.outer_out_nit_sot,
                                             shapes)]
@@ -1580,8 +1581,7 @@ def scan_pushout_dot1(node):
                                         outer_mitsot +
                                         outer_sitsot +
                                         outer_shared +
-                                        [node.inputs[0] for x in
-                                         outer_nitsot] +
+                                        outer_nitsot +
                                         [node.inputs[0]] +
                                         outer_non_seqs)
                     new_outs = new_op(*_scan_inputs)
