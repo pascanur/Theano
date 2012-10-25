@@ -1715,14 +1715,6 @@ scan_seqopt2.register('scanOp_remove_constants_and_unused_inputs0',
                       'scan')
 
 
-## After nonsequences had been pushed out
-scan_seqopt2.register('scanop_remove_constants_and_unused_inputs1',
-                      opt.in2out(remove_constants_and_unused_inputs_scan,
-                                 ignore_newtrees=True),
-                      3,
-                      'fast_run',
-                      'scan')
-
 # after const merge but before stabilize so that we can have identity
 # for equivalent nodes but we still have the chance to hoist stuff out
 # of the scan later.

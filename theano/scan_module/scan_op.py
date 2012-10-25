@@ -622,9 +622,10 @@ class Scan(PureOp):
         # If a shared variable is the result of a ViewOp it is a clear
         # indication that we need to copy that value after the perform of
         # scan is done
-        if self.nit_sot_buffers or self.n_nit_sot == 0:
+        if (self.nit_sot_buffers or self.n_nit_sot == 0) and False:
             # Construct dummy variables
             # add dummy starting variable for indices to work
+            import ipdb; ipdb.set_trace()
             self._shared_vars = [
                 inp.type._generate_shared_placeholder()
                 for inp in node.inputs[1:]]
@@ -1472,6 +1473,10 @@ class Scan(PureOp):
                     self.mintaps[self.n_mit_mot]
         else:
             n_steps = inputs[0]
+        if self.truncate_gradient != -1:
+            grad_steps = tensor.constant(self.truncate_gradient)
+        else:
+            grad_steps = n_steps
 
         rval = scan_utils.reconstruct_graph(self.inputs,
                                             self.outputs)
@@ -1562,33 +1567,38 @@ class Scan(PureOp):
             dC_dinps_t[dx + self.n_seqs] += dC_dXtm1
         # Construct scan op
         # Seqs
-        outer_inp_seqs = [x[::-1] for x in inputs[1:1 + self.n_seqs]]
+        #if 'grad_of' in self.name:
+        #    import ipdb; ipdb.set_trace()
+        outer_inp_seqs = [x[::-1][:grad_steps] for x in inputs[1:1 + self.n_seqs]]
         for idx in xrange(self.n_mit_mot + self.n_mit_sot):
             mintap = numpy.min(self.tap_array[idx])
             maxtap = numpy.max(self.tap_array[idx])
             seq = outs[idx]
+            if maxtap < 0:
+                dim_offset = abs(maxtap)
+            else:
+                dim_offset = 0
             for k in self.tap_array[idx]:
-                if maxtap < 0:
-                    dim_offset = abs(maxtap)
-                else:
-                    dim_offset = 0
                 if maxtap == mintap and maxtap != 0:
-                    nw_seq = seq[:abs(maxtap)]
-                elif maxtap - k != 0:
-                    nw_seq = seq[dim_offset + k - mintap - 1:\
-                                 -(maxtap - k + 1)][::-1]
+                    nw_seq = seq[:-abs(maxtap)]
                 else:
-                    nw_seq = seq[dim_offset + k - mintap - 1: -1][::-1]
+                    offset = -mintap + k
+                    nw_seq = seq[offset:offset + grad_steps][::-1]
+                #elif maxtap - k != 0:
+                #    nw_seq = seq[dim_offset + k - mintap - 1:\
+                #                 -(maxtap - k + 1)][::-1]
+                #else:
+                #    nw_seq = seq[dim_offset + k - mintap - 1: -1][::-1]
                 outer_inp_seqs.append(nw_seq)
         outer_inp_seqs += [
-            x[:-1][::-1] for x in self.outer_sitsot_outs(outs)]
+            x[:-1][::-1][:grad_steps] for x in self.outer_sitsot_outs(outs)]
         for x in self.outer_nitsot_outs(dC_douts):
             if not isinstance(x.type, DisconnectedType):
-                outer_inp_seqs.append(x[::-1])
+                outer_inp_seqs.append(x[::-1][:grad_steps])
 
-        outer_inp_seqs += [x[::-1] for x in self.outer_mitsot_outs(outs)]
-        outer_inp_seqs += [x[::-1] for x in self.outer_sitsot_outs(outs)]
-        outer_inp_seqs += [x[::-1] for x in self.outer_nitsot_outs(outs)]
+        outer_inp_seqs += [x[::-1][:grad_steps] for x in self.outer_mitsot_outs(outs)]
+        outer_inp_seqs += [x[::-1][:grad_steps] for x in self.outer_sitsot_outs(outs)]
+        outer_inp_seqs += [x[::-1][:grad_steps] for x in self.outer_nitsot_outs(outs)]
 
         inner_inp_seqs = self.inner_seqs(self_inputs)
         inner_inp_seqs += self.inner_mitmot(self_inputs)
@@ -1704,10 +1714,6 @@ class Scan(PureOp):
             ins_pos += 1
             n_mitmot_inps += 2
 
-        if self.truncate_gradient != -1:
-            grad_steps = tensor.constant(self.truncate_gradient)
-        else:
-            grad_steps = n_steps
 
         n_nit_sot = self.n_seqs
         inner_out_nitsot = dC_dinps_t[:self.n_seqs]

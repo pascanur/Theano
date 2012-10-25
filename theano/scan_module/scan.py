@@ -714,17 +714,15 @@ def scan(fn,
                 non_seqs)
 
     else:
-        tmp_other_inner_args = []
+        replace_params = {}
         for x in non_seqs:
             if (not isinstance(x, SharedVariable) and
                 not isinstance(x, tensor.Constant)):
-                tmp_other_inner_args.append(safe_new(x,'_cpy'))
-            else:
-                tmp_other_inner_args.append(x)
-        len_non_other = len(non_seqs)
+                replace_params[x] = safe_new(x, '_cpy')
+
         args = (inner_seqs +
                 ordered_args +
-                tmp_other_inner_args)
+                non_seqs)
 
     # add only the non-shared variables and non-constants to the arguments of
     # the dummy function [ a function should not get shared variables or
@@ -782,9 +780,9 @@ def scan(fn,
 
     # extract still missing inputs (there still might be so) and add them
     # as non sequences at the end of our args
-    fake_nonseqs = [x.type() for x in non_seqs[len_non_other:]]
+    fake_nonseqs = [x.type() for x in non_seqs]
     fake_outputs = scan_utils.clone(outputs,
-                                    replace=dict(zip(non_seqs[len_non_other:],
+                                    replace=dict(zip(non_seqs,
                                                      fake_nonseqs)))
     all_inputs = itertools.ifilter(
         lambda x: (isinstance(x, gof.Variable) and
@@ -900,14 +898,10 @@ def scan(fn,
                             not isinstance(arg, tensor.Constant))]
 
     ## Step 5.6 all shared variables with no update rules
-    addition = [safe_new(arg, '_copy') for arg in
-                non_seqs[len_non_other:]
-                if (not isinstance(arg, SharedVariable) and
-                    not isinstance(arg, tensor.Constant))]
-    #other_inner_args += addition
-    other_inner_args = [x for (x,y) in zip(
-        tmp_other_inner_args + addition, non_seqs)
-        if y in other_scan_args]
+    other_inner_args += [safe_new(arg, '_copy') for arg in non_seqs
+                         if (not isinstance(arg, SharedVariable) and
+                             not isinstance(arg, tensor.Constant))]
+
     givens.update(dict(zip(other_scan_args, other_inner_args)))
     other_shared_scan_args = [arg.variable for arg
                         in dummy_f.maker.expanded_inputs
