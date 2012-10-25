@@ -103,12 +103,15 @@ def remove_constants_and_unused_inputs_scan(node):
                 pass
         elif op_ins[idx] in all_ins:
             # Check for identical other sequence
-            identical_seqs = [x for x in nw_outer[1:]
+            identical_seqs = [x for x in nw_outer
                                   if scan_utils.equal_computations(
                                       [x], [node.inputs[idx + 1]])]
-            if identical_seqs:
+            if identical_seqs and False:
                 index = node.inputs.index(identical_seqs[0]) - 1
-                givens[op_ins[idx]] = op_ins[index]
+                if op_ins[index] not in givens.keys():
+                    givens[op_ins[idx]] = op_ins[index]
+                else:
+                    givens[op_ins[idx]] = givens[op_ins[index]]
             else:
                 nw_inner += [op_ins[idx]]
                 nw_outer += [node.inputs[idx + 1]]
@@ -1713,12 +1716,12 @@ scan_seqopt2.register('scanOp_remove_constants_and_unused_inputs0',
 
 
 ## After nonsequences had been pushed out
-#scan_seqopt2.register('scanop_remove_constants_and_unused_inputs1',
-#                      opt.in2out(remove_constants_and_unused_inputs_scan,
-#                                 ignore_newtrees=True),
-#                      3,
-#                      'fast_run',
-#                      'scan')
+scan_seqopt2.register('scanop_remove_constants_and_unused_inputs1',
+                      opt.in2out(remove_constants_and_unused_inputs_scan,
+                                 ignore_newtrees=True),
+                      3,
+                      'fast_run',
+                      'scan')
 
 # after const merge but before stabilize so that we can have identity
 # for equivalent nodes but we still have the chance to hoist stuff out

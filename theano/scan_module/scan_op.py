@@ -1629,7 +1629,7 @@ class Scan(PureOp):
                 for _sh in self.inner_shared(self_inputs):
                     if _sh in gof.graph.inputs([dC_dinps_t[ins_pos]]):
                         undefined = True
-                n_mitmot_inps_ += 1
+                n_mitmot_inps += 1
                 ins_pos += 1
                 n_mitmot_outs += 1
                 mitmot_inp_taps[idx].append(-self.tap_array[idx][jdx])
