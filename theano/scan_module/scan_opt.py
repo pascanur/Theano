@@ -1741,11 +1741,11 @@ scan_seqopt2.register('scanOp_merge_inouts',
 # Just before specialize to have the other optimization
 # like constant folding being applied
 # This don't introduce inplace.
-#scan_seqopt2.register('scanOp_save_mem',
-#                      ScanSaveMem(),
-#                      7,
-#                      'fast_run',
-#                      'scan')
+scan_seqopt2.register('scanOp_save_mem',
+                      ScanSaveMem(),
+                      7,
+                      'fast_run',
+                      'scan')
 
 # After everything else
 scan_seqopt2.register('scanOp_remove_constants_and_unused_inputs3',
