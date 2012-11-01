@@ -61,6 +61,10 @@ def remove_constants_and_unused_inputs_scan(node):
     '''
     if not isinstance(node.op, scan_op.Scan):
         return False
+    if (hasattr(node.op, 'flags') and
+        node.op.flags and
+        'no_optimization' in node.op.flags):
+        return False
     op = node.op
     # We only need to take care of sequences and other arguments
     st = op.n_seqs
@@ -161,7 +165,10 @@ class PushOutNonSeqScan(gof.Optimizer):
         nodelist = [x for x in fgraph.toposort() if isinstance(x.op,
                                                            scan_op.Scan)]
         for node in nodelist:
-            self.process_node(fgraph, node)
+            if not (hasattr(node.op, 'flags') and
+                    node.op.flags and
+                'no_optimization' in node.op.flags):
+                self.process_node(fgraph, node)
 
     def process_node(self, fgraph, node):
         # this flag tells if there was any change during the last iterations
@@ -339,7 +346,10 @@ class PushOutSeqScan(gof.Optimizer):
         nodelist = [x for x in fgraph.toposort() if isinstance(x.op,
                                                            scan_op.Scan)]
         for node in nodelist:
-            self.process_node(fgraph, node)
+            if not (hasattr(node.op, 'flags') and
+                    node.op.flags and
+                'no_optimization' in node.op.flags):
+                self.process_node(fgraph, node)
 
     def process_node(self, fgraph, node):
         # this flag tells if there was any change during the last iterations

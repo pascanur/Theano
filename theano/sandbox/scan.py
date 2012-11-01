@@ -38,6 +38,7 @@ def scan(fn,
          n_steps=None,
          mode=None,
          name=None,
+         flags=None,
          profile=False):
     """
     Similar to Theano's official scan, this function gives the user more
@@ -611,14 +612,18 @@ def scan(fn,
     info['inplace'] = False
     info['gpu'] = False
     info['as_while'] = as_while
+    info['flags'] = flags
     info['profile'] = profile
     info['_scan_savemem_visited'] = True
-
     local_op = scan_op.Scan(inner_inputs, new_outs, info)
 
     ##
     ### Step 8. Compute the outputs using the scan op
     ##
+    other_shared_scan_args = [tensor.as_tensor_variable(x) for x in
+                              other_shared_scan_args]
+    other_scan_args = [tensor.as_tensor_variable(x) for x in
+                       other_scan_args]
     _scan_inputs = (scan_seqs +
                     mit_mot_scan_inputs +
                     mit_sot_scan_inputs +
