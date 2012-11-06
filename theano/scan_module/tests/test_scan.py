@@ -2345,9 +2345,7 @@ class T_Scan(unittest.TestCase):
         # this new assert is here to test if scan_merging works ..
         nb_scan = len([n for n in topo
             if isinstance(n.op, theano.scan_module.scan_op.Scan)])
-        # For this to work we need an optimization that it will be pushed in
-        # a new pull request
-        self.assertTrue(nb_scan == 2)
+        self.assertTrue(nb_scan == 1)
         nb_shape_i = len([n for n in topo
             if isinstance(n.op, theano.tensor.opt.Shape_i)])
         if theano.config.mode != 'FAST_COMPILE':
@@ -2363,7 +2361,8 @@ class T_Scan(unittest.TestCase):
         sx, upx = theano.scan(sum, sequences=[x])
         sy, upy = theano.scan(sum, sequences=[y])
 
-        f = theano.function([x, y], [sx, sy], mode=mode_with_opt)
+        f = theano.function([x, y], [sx, sy],
+                            mode=mode_with_opt.excluding('scanOp_pushout_seqs_ops'))
         topo = f.maker.fgraph.toposort()
         scans = filter(lambda n: isinstance(
             n.op, theano.scan_module.scan_op.Scan), topo)
@@ -2372,7 +2371,8 @@ class T_Scan(unittest.TestCase):
         sx, upx = theano.scan(sum, sequences=[x], n_steps=2)
         sy, upy = theano.scan(sum, sequences=[y], n_steps=3)
 
-        f = theano.function([x, y], [sx, sy], mode=mode_with_opt)
+        f = theano.function([x, y], [sx, sy],
+                            mode=mode_with_opt.excluding('scanOp_pushout_seqs_ops'))
         topo = f.maker.fgraph.toposort()
         scans = filter(lambda n: isinstance(
             n.op, theano.scan_module.scan_op.Scan), topo)
@@ -2381,7 +2381,8 @@ class T_Scan(unittest.TestCase):
         sx, upx = theano.scan(sum, sequences=[x], n_steps=4)
         sy, upy = theano.scan(sum, sequences=[y], n_steps=4)
 
-        f = theano.function([x, y], [sx, sy], mode=mode_with_opt)
+        f = theano.function([x, y], [sx, sy],
+                            mode=mode_with_opt.excluding('scanOp_pushout_seqs_ops'))
         topo = f.maker.fgraph.toposort()
         scans = filter(lambda n: isinstance(
             n.op, theano.scan_module.scan_op.Scan), topo)
@@ -2390,7 +2391,8 @@ class T_Scan(unittest.TestCase):
         sx, upx = theano.scan(sum, sequences=[x])
         sy, upy = theano.scan(sum, sequences=[x])
 
-        f = theano.function([x], [sx, sy], mode=mode_with_opt)
+        f = theano.function([x], [sx, sy],
+                            mode=mode_with_opt.excluding('scanOp_pushout_seqs_ops'))
         topo = f.maker.fgraph.toposort()
         scans = filter(lambda n:
                        isinstance(n.op, theano.scan_module.scan_op.Scan), topo)
@@ -2400,7 +2402,7 @@ class T_Scan(unittest.TestCase):
         sy, upy = theano.scan(sum, sequences=[x], mode='FAST_COMPILE')
 
         f = theano.function([x], [sx, sy],
-                            mode=mode_with_opt)
+                            mode=mode_with_opt.excluding('scanOp_pushout_seqs_ops'))
         topo = f.maker.fgraph.toposort()
         scans = filter(lambda n:
                        isinstance(n.op, theano.scan_module.scan_op.Scan), topo)
@@ -2409,7 +2411,8 @@ class T_Scan(unittest.TestCase):
         sx, upx = theano.scan(sum, sequences=[x])
         sy, upy = theano.scan(sum, sequences=[x], truncate_gradient=1)
 
-        f = theano.function([x], [sx, sy], mode=mode_with_opt)
+        f = theano.function([x], [sx, sy],
+                            mode=mode_with_opt.excluding('scanOp_pushout_seqs_ops'))
         topo = f.maker.fgraph.toposort()
         scans = filter(lambda n:
                        isinstance(n.op, theano.scan_module.scan_op.Scan), topo)
@@ -2819,12 +2822,12 @@ class T_Scan(unittest.TestCase):
         vx = numpy.zeros((50,), dtype=theano.config.floatX)
         vx[23] = 4
         out, out2 = f(vx)
-        print 'len_out', len(out)
         assert len(out) == 24
         assert numpy.all(out2 == vx + 2)
         lssc = [x for x in f.maker.fgraph.toposort()
                 if isinstance(x.op, theano.scan_module.scan_op.Scan)]
-        assert len(lssc) == 2
+        # One scan node gets optimnized out
+        assert len(lssc) == 1
 
     @dec.knownfailureif(True,
                         ("This test fails because not typed outputs_info "
