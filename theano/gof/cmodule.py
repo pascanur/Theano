@@ -1837,5 +1837,212 @@ class GCC_compiler(object):
             return dlimport(lib_filename)
 
 
+AddConfigVar('vc.compiler_bindir',
+             "If defined, vc compiler driver will seek vc.exe"
+             " in this directory",
+        StrParam(""))
+
+
+def filter_vc_flags(s):
+    assert isinstance(s, str)
+    flags = [flag for flag in s.split(' ') if flag]
+    if any([f for f in flags if not f.startswith("/")]):
+        raise ValueError(
+            "Theano vc.flags support only parameter/value pairs without"
+            " space between them. e.g.: '--machine 64' is not supported,"
+            " but '--machine=64' is supported. Please add the '=' symbol."
+            " vc.flags value is '%s'" % s)
+    return ' '.join(flags)
+AddConfigVar('vc.flags',
+        "Extra compiler flags for vc",
+        ConfigParam(config.vcflags, filter_vc_flags))
+
+
+vc_path = 'vc.exe'
+vc_version = None
+
+
+def is_vc_available():
+    """Return True iff the nvcc compiler is found."""
+    def set_version():
+        p = call_subprocess_Popen([vc_path],
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE)
+        p.wait()
+        global vc_version
+        vc_version = 'unknown'
+    try:
+        set_version()
+        return True
+    except Exception:
+        #try to find nvcc into cuda.root
+        p = os.path.join(config.vc.compile_bindir, 'cl.exe')
+        if os.path.exists(p):
+            global nvcc_path
+            vc_path = p
+            try:
+                set_version()
+            except Exception:
+                return False
+            return True
+        else:
+            return False
+
+
+rpath_defaults = []
+
+
+def add_standard_rpath(rpath):
+    rpath_defaults.append(rpath)
+
+
+class VC_compiler(object):
+    @st aticmethod
+    def version_str():
+        return "cl.exe " + vc_version
+
+    @staticmethod
+    def compile_args():
+        """
+        This args will be received by compile_str() in the preargs paramter.
+        They will also be included in the "hard" part of the key module.
+        """
+        flags = [flag for flag in config.vc.flags.split(' ') if flag]
+
+        # numpy 1.7 deprecated the following macro but the didn't
+        # existed in the past
+        numpy_ver = [int(n) for n in numpy.__version__.split('.')[:2]]
+        if bool(numpy_ver < [1, 7]):
+            flags.append("/DNPY_ARRAY_ENSURECOPY=NPY_ENSURECOPY")
+            flags.append("/DNPY_ARRAY_ALIGNED=NPY_ALIGNED")
+            flags.append("/DNPY_ARRAY_WRITEABLE=NPY_WRITEABLE")
+            flags.append("/DNPY_ARRAY_UPDATE_ALL=NPY_UPDATE_ALL")
+            flags.append("/DNPY_ARRAY_C_CONTIGUOUS=NPY_C_CONTIGUOUS")
+            flags.append("/DNPY_ARRAY_F_CONTIGUOUS=NPY_F_CONTIGUOUS")
+        return flags
+
+    @staticmethod
+    def compile_str(
+            module_name, src_code,
+            location=None, include_dirs=[], lib_dirs=[], libs=[], preargs=[],
+            rpaths=rpath_defaults, py_module=True):
+        """:param module_name: string (this has been embedded in the src_code
+        :param src_code: a complete c or c++ source listing for the module
+        :param location: a pre-existing filesystem directory where the
+                         cpp file and .so will be written
+        :param include_dirs: a list of include directory names
+                             (each gets prefixed with -I)
+        :param lib_dirs: a list of library search path directory names
+                         (each gets prefixed with -L)
+        :param libs: a list of libraries to link with
+                     (each gets prefixed with -l)
+        :param preargs: a list of extra compiler arguments
+        :param rpaths: list of rpaths to use with Xlinker.
+                       Defaults to `rpath_defaults`.
+        :param py_module: if False, compile to a shared library, but
+            do not import as a Python module.
+
+        :returns: dynamically-imported python module of the compiled code.
+            (unless py_module is False, in that case returns None.)
+
+        :note 1: On Windows 7 with nvcc 3.1 we need to compile in the
+                 real directory Otherwise nvcc never finish.
+
+        """
+
+        rpaths = list(rpaths)
+       if preargs is None:
+            preargs = []
+        else:
+            preargs = list(preargs)
+
+        #The include dirs gived by the user should have precedence over
+        #the standards ones.
+        include_dirs = include_dirs + std_include_dirs()
+        if os.path.abspath(os.path.split(__file__)[0]) not in include_dirs:
+            include_dirs.append(os.path.abspath(os.path.split(__file__)[0]))
+
+        libs = std_libs() + libs
+        lib_dirs = std_lib_dirs() + lib_dirs
+
+
+        # sometimes, the linker cannot find -lpython so we need to tell it
+        # explicitly where it is located
+        # this returns somepath/lib/python2.x
+        python_lib = distutils.sysconfig.get_python_lib(plat_specific=1, \
+                            standard_lib=1)
+        python_lib = os.path.dirname(python_lib)
+        if python_lib not in lib_dirs:
+            lib_dirs.append(python_lib)
+
+        cppfilename = os.path.join(location, 'mod.cpp')
+        cppfile = file(cppfilename, 'w')
+
+        _logger.debug('Writing module C++ code to %s', cppfilename)
+
+        cppfile.write(src_code)
+        cppfile.close()
+        lib_filename = os.path.join(location, '%s.%s' %
+                (module_name, get_lib_extension()))
+
+        _logger.debug('Generating shared lib %s', lib_filename)
+                cmd = ['cl.exe', get_gcc_shared_library_arg()]
+
+        if config.cmodule.remove_gxx_opt:
+            cmd.extend(p for p in preargs if not p.startswith('/O'))
+        else:
+            cmd.extend(preargs)
+        cmd.extend('/I%s' % idir for idir in include_dirs)
+        cmd.extend(['/LD /Fe%s'% lib_filename])
+        cmd.append(cppfilename)
+        cmd.extend(['/I%s' % ldir for ldir in lib_dirs])
+        cmd.extend(['/I%s' % l for l in libs])
+        #print >> sys.stderr, 'COMPILING W CMD', cmd
+        _logger.debug('Running cmd: %s', ' '.join(cmd))
+
+        def print_command_line_error():
+            # Print command line when a problem occurred.
+            print >> sys.stderr, (
+                    "Problem occurred during compilation with the "
+                    "command line below:")
+            print >> sys.stderr, ' '.join(cmd)
+
+        try:
+            p = call_subprocess_Popen(cmd, stderr=subprocess.PIPE)
+            compile_stderr = p.communicate()[1]
+        except Exception:
+            # An exception can occur e.g. if `g++` is not found.
+            print_command_line_error()
+            raise
+
+        status = p.returncode
+
+        if status:
+            print '==============================='
+            for i, l in enumerate(src_code.split('\n')):
+                #gcc put its messages to stderr, so we add ours now
+                print >> sys.stderr, '%05i\t%s' % (i + 1, l)
+            print '==============================='
+            print_command_line_error()
+            # Print errors just below the command line.
+            print compile_stderr
+            # We replace '\n' by '. ' in the error message because when Python
+            # prints the exception, having '\n' in the text makes it more
+            # difficult to read.
+            raise Exception('Compilation failed (return status=%s): %s' %
+                            (status, compile_stderr.replace(b('\n'), b('. '))))
+        elif config.cmodule.compilation_warning and compile_stderr:
+            # Print errors just below the command line.
+            print compile_stderr
+
+        if py_module:
+            #touch the __init__ file
+            open(os.path.join(location, "__init__.py"), 'w').close()
+            assert os.path.isfile(lib_filename)
+            return dlimport(lib_filename)
+
+
+
+
 def icc_module_compile_str(*args):
     raise NotImplementedError()
