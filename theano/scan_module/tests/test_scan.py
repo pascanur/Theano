@@ -2950,6 +2950,26 @@ class T_Scan(unittest.TestCase):
             raise Exception(theano.tensor.verify_grad.E_grad,
                     (max_err, 1e-2, max_err_pos))
 
+    def test_scan_merge_nodes(self):
+        inps = tensor.vector()
+        state = tensor.scalar()
+        y1, _ = theano.scan(lambda x,y: x*y,
+                            sequences = inps,
+                            outputs_info = state)
+
+        y2, _ = theano.scan(lambda x,y : (x+y, theano.scan_module.until(x>0)),
+                            sequences = inps,
+                            outputs_info = state)
+        scan_node1 = y1.owner.inputs[0].owner
+        assert isinstance(scan_node1.op, theano.scan_module.scan_op.Scan)
+        scan_node2 = y2.owner.inputs[0].owner
+        assert isinstance(scan_node2.op, theano.scan_module.scan_op.Scan)
+        opt_obj = theano.scan_module.scan_opt.ScanMerge()
+        # Test the method belongs_to of this class. Specifically see if it
+        # detects the two scan_nodes as not being similar
+        assert not opt_obj.belongs_to_set(scan_node1, [scan_node2])
+        assert not opt_obj.belongs_to_set(scan_node2, [scan_node1])
+
     def test_rop_mitmot(self):
         # this test is a copy paste from the script given by Justin Bayer to
         # reproduce this bug
