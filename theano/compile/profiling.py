@@ -184,7 +184,7 @@ class ProfileStats(object):
             hasattr(theano.sandbox, 'cuda') and
             theano.sandbox.cuda.cuda_enabled):
             if os.environ.get('CUDA_LAUNCH_BLOCKING', '0') != '1':
-                raise Exception(
+                print (
                     "You are running the Theano profiler with CUDA enabled."
                     " Theano GPU ops execution is asynchronous by default."
                     " So by default, the profile is useless."
