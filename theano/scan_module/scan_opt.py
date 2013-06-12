@@ -123,9 +123,10 @@ def remove_constants_and_unused_inputs_scan(node):
         if isinstance(nw_out, tensor.Constant):
             givens[nw_in] = nw_out.clone()
         elif nw_in in all_ins:
-            identical_non_seqs = [x for x in outer_non_seqs[:idx]
-                                  if scan_utils.equal_computations(
-                                      [x], [nw_out])]
+            identical_non_seqs = [
+                x for x, y in zip(outer_non_seqs[:idx], non_seqs[:idx])
+                    if (scan_utils.equal_computations([x], [nw_out]) and
+                        y in all_ins)]
             if identical_non_seqs:
                 index = outer_non_seqs.index(identical_non_seqs[0])
                 givens[nw_in] = non_seqs[index]
